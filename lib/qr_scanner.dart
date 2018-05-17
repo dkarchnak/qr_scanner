@@ -1,37 +1,27 @@
 import 'dart:async';
 
+
 import 'package:flutter/services.dart';
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 final MethodChannel _channel =
     const MethodChannel('cz.bcx.qr_scanner');
 
-class ScannerPreview extends StatefulWidget {
+class ScannerPreview extends StatelessWidget {
   final ScannerController controller;
 
   const ScannerPreview(this.controller);
 
-  @override
-  State<StatefulWidget> createState() {
-    return new ScannerPreviewState(controller);
-  }
-}
-
-class ScannerPreviewState extends State<ScannerPreview> {
-  final ScannerController controller;
-  String text = "Nic";
-
-  ScannerPreviewState(this.controller);
 
   @override
   Widget build(BuildContext context) {
-    if(this.controller != null && this.controller._initialized)
+    if(this.controller != null && this.controller.value.initialized)
       return new Container(
         child: new Texture(textureId: controller._textureId),
       );
     else
       return new Container(
-        child: new Text("text")
+        child: new Text("Controller is not initialized!"),
       );
   }
 }
@@ -57,81 +47,172 @@ String _serializePreviewQuality(PreviewQuality previewQuality) {
   }
 }
 
-class ScannerController {
-  bool _initialized = false;
-  bool _disposed = false;
+class ScannerValue {
+  final bool initialized;
 
-  int _textureId;
-  int _resWidth, _resHeight;
+  final bool previewStarted;
+  final Size previewSize;
+  final bool scanningEnabled;
 
-  int get textureId => _textureId;
+  final String error;
 
-  int get resWidth => _resWidth;
+  const ScannerValue({
+    this.initialized,
+    this.previewStarted,
+    this.previewSize,
+    this.scanningEnabled,
+    this.error
+  });
 
-  int get resHeight => _resHeight;
+  const ScannerValue.uninitialized() : this(initialized: false, previewStarted: false, scanningEnabled: false);
 
-  int get aspectRatio => _resWidth * _resHeight;
-
-  Future<Null> initialize({PreviewQuality previewQuality : PreviewQuality.medium}) async {
-    var completer = new Completer<Null>();
-    if(_disposed) {
-      throw new ScannerException(message: "Calling initialize method on already disposed ScannerController instance!");
-    }
-
-    try {
-      final Map parameters = <String, dynamic>{
-        'previewQuality': _serializePreviewQuality(previewQuality)
-      };
-
-      final Map<dynamic, dynamic> methodResult = await _channel.invokeMethod(
-        'initialize',
-        parameters
-      );
-
-      this._textureId = methodResult['textureId'];
-      this._resWidth  = methodResult['resWidth'];
-      this._resHeight  = methodResult['resHeight'];
-
-      print('Initialzed ScannerController with textureId: ${this._textureId} and resolution: ${this._resWidth}x${this.resHeight}');
-
-      this._initialized = true;
-
-      completer.complete(null);
-    } on PlatformException catch(e) {
-      throw new ScannerException(
-        message: 'PlatformException raised during initialize method!',
-        cause: e
-      );
-    }
-
-    return completer.future;
+  ScannerValue copyWith({
+    bool initialized,
+    bool previewStarted,
+    Size previewSize,
+    bool scanningEnabled,
+    String error
+  }) {
+    return new ScannerValue(
+      initialized: initialized ?? this.initialized,
+      previewStarted: previewStarted ?? this.previewStarted,
+      previewSize: previewSize ?? this.previewSize,
+      scanningEnabled: scanningEnabled ?? this.scanningEnabled,
+      error: error ?? this.error
+    );
   }
 
-  Future<Null> startPreview() async {
-    var completer = new Completer<Null>();
+  @override
+  String toString() {
+    return  '$runtimeType('
+            'initialized: $initialized, '
+            'previewStarted: $previewStarted, '
+            'previewSize: $previewSize, '
+            'scanningEnabled: $scanningEnabled)';
+  }
+}
 
+class ScannerController extends ValueNotifier<ScannerValue> {
+  Completer<Null> _initializeCompleter;
+
+  PreviewQuality previewQuality;
+  int _textureId;
+
+  bool _disposed = false;
+
+  StreamSubscription<dynamic> _eventChannelSubscription;
+
+  ScannerController({this.previewQuality : PreviewQuality.medium}) : super(new ScannerValue.uninitialized());
+
+  Future<Null> initialize() async {
     if(_disposed) {
-      throw new ScannerException(message: "Calling startPreview method on already disposed ScannerController instance!");
-    }
-
-    if(!_initialized) {
-      throw new ScannerException(message: "You need to initialize ScannerController before starting preview.");
+      //TODO - Throw an error?
+      return;
     }
 
     try {
-      await _channel.invokeMethod(
-        'start'
+      _initializeCompleter = new Completer<Null>();
+      
+      final Map<dynamic, dynamic> methodResult = await _channel.invokeMethod(
+        'initialize',
+        <String, dynamic> {
+          'previewQuality' : _serializePreviewQuality(previewQuality)
+        }
       );
 
-      completer.complete(null);
-    } on PlatformException catch(e) {
-      throw new ScannerException(
-          message: 'PlatformException raised during startPreview method!',
-          cause: e
+      _textureId = methodResult['textureId'];
+      value = value.copyWith(
+        previewSize: new Size(
+          methodResult['previewWidth'],
+          methodResult['previewHeight']
+        )
       );
+
+      // Subscription to receive state and error events from native platform
+      _eventChannelSubscription = new EventChannel('cz.bcx.qr_scanner/events')
+          .receiveBroadcastStream()
+          .listen(_onEventReceived);
+
+
+      value = value.copyWith(
+        initialized: true
+      );
+
+      _initializeCompleter.complete(null);
+    } on PlatformException catch(e) {
+      print(e.code);
+      print(e.message);
+      throw new ScannerException(message: "Failed while initializing ScannerController.", cause: e);
+    }
+  }
+
+  void _onEventReceived(dynamic event) {
+    if(_disposed) return;
+
+    print(event); //TODO
+  }
+
+  void startPreview() async {
+    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+      await _channel.invokeMethod(
+        'startPreview',
+      );
+
+      value = value.copyWith(previewStarted: true);
+    }
+  }
+
+  void stopPreview() async {
+    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+      await _channel.invokeMethod(
+        'stopPreview'
+      );
+
+      value = value.copyWith(previewStarted: false);
+    }
+  }
+
+  void enableScanning() async {
+    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+      await _channel.invokeMethod(
+          'enableScanning'
+      );
+
+      value = value.copyWith(scanningEnabled: true);
+    }
+  }
+
+  void disableScanning() async {
+    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+      await _channel.invokeMethod(
+          'disableScanning'
+      );
+
+      value = value.copyWith(scanningEnabled: false);
+    }
+  }
+
+  @override
+  Future<Null> dispose() {
+    if(_disposed) {
+      return new Future<Null>.value(null);
     }
 
-    return completer.future;
+    _disposed = true;
+
+    super.dispose();
+
+    if(_initializeCompleter != null) {
+      return _initializeCompleter.future.then((param) async {
+        await _eventChannelSubscription?.cancel();
+        await _channel.invokeMethod(
+          'dispose'
+        );
+      });
+    }
+    else {
+      return new Future<Null>.value(null);
+    }
   }
 }
 
