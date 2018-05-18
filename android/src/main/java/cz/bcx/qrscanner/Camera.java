@@ -284,6 +284,8 @@ public class Camera {
         cameraCaptureSession.stopRepeating();
         captureRequest = null;
 
+        imageReader.setOnImageAvailableListener(null, null);
+
         stopBackgroundThread();
     }
 
@@ -297,6 +299,8 @@ public class Camera {
 
             captureRequestBuilder.addTarget(previewSurface);
             captureRequestBuilder.addTarget(imageReader.getSurface());
+
+            captureRequest = captureRequestBuilder.build();
 
             imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
                 byte[] planeBufferArray;
@@ -350,8 +354,6 @@ public class Camera {
                 }
             },
             backgroundHandler);
-
-            captureRequest = captureRequestBuilder.build();
         }
 
         cameraCaptureSession.setRepeatingRequest(
