@@ -33,7 +33,7 @@ import com.google.zxing.DecodeHintType;
 import com.google.zxing.LuminanceSource;
 import com.google.zxing.MultiFormatReader;
 import com.google.zxing.PlanarYUVLuminanceSource;
-import com.google.zxing.ReaderException;
+import com.google.zxing.NotFoundException;
 import com.google.zxing.Result;
 import com.google.zxing.common.HybridBinarizer;
 
@@ -339,8 +339,8 @@ public class Camera {
                         }
 
                         lastTimeScanned = System.currentTimeMillis();
-                    } catch (ReaderException e) {
-                        e.printStackTrace();
+                    } catch (NotFoundException e) {
+                        // Ignore this :))
                     } catch (NullPointerException e) {
                         e.printStackTrace();
                     } finally {

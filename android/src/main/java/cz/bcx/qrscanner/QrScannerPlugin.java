@@ -66,14 +66,17 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
 
       @Override
       public void onActivityStopped(Activity activity) {
-        // TODO - Dispose
       }
 
       @Override
       public void onActivitySaveInstanceState(Activity activity, Bundle outState) {}
 
       @Override
-      public void onActivityDestroyed(Activity activity) {}
+      public void onActivityDestroyed(Activity activity) {
+          if(activity == QrScannerPlugin.this.activity) {
+              if(camera != null) camera.dispose();
+          }
+      }
     });
   }
 
