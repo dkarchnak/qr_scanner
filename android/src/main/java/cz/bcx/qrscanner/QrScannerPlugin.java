@@ -192,11 +192,19 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
               event.put("errorMessage", cameraStateError.getMessage());
               eventSink.success(event);
             }
+
+            @Override
+            public void onCodeScanned(String code) {
+              Map<String, String> event = new HashMap<>();
+              event.put("eventType", "codeScanned");
+              event.put("code", code);
+              eventSink.success(event);
+            }
           });
 
           QrScannerPlugin.this.camera = camera;
         } catch (CameraAccessException e) {
-          result.error("CameraAccessException", "Exception raised when  initializing qr scanner plugin.", e);
+          result.error("CameraAccessException", "Exception raised when initializing qr scanner plugin.", e);
         }
       }
     };

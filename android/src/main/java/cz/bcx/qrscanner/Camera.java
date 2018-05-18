@@ -22,12 +22,16 @@ import android.view.Surface;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.view.FlutterView;
 
+import com.google.zxing.BarcodeFormat;
 import com.google.zxing.BinaryBitmap;
+import com.google.zxing.DecodeHintType;
 import com.google.zxing.LuminanceSource;
 import com.google.zxing.MultiFormatReader;
 import com.google.zxing.PlanarYUVLuminanceSource;
@@ -92,12 +96,19 @@ public class Camera {
     public interface CameraStateListener {
         void onCameraDisconnected();
         void onCameraError(CameraStateError cameraStateError);
+        void onCodeScanned(String code);
+    }
+
+    public interface ScannerCallback {
+        void onCodeScanned(String data);
     }
 
     private static final int BETWEEN_SCANS_DELAY = 333; //ms
 
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
+
+    private CameraStateListener stateListener;
 
     private final String cameraId;
     private final ImageReader imageReader;
@@ -110,6 +121,8 @@ public class Camera {
 
     private Surface previewSurface;
     private Size previewSize;
+
+    private MultiFormatReader qrReader;
 
     private boolean scanningEnabled = false;
     private long lastTimeScanned = 0;
@@ -129,6 +142,14 @@ public class Camera {
         SurfaceTexture surfaceTexture = textureEntry.surfaceTexture();
         surfaceTexture.setDefaultBufferSize(previewSize.getWidth(), previewSize.getHeight()); //TODO);
         this.previewSurface = new Surface(surfaceTexture);
+
+        this.qrReader = new MultiFormatReader();
+
+        // Scan QR Codes only
+        // Makes scanning much faster
+        Map<DecodeHintType, Object> hints = new HashMap<>();
+        hints.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(BarcodeFormat.QR_CODE));
+        this.qrReader.setHints(hints);
     }
 
     public static Camera createCameraInstance(CameraManager cameraManager, FlutterView flutterView, PreviewQuality previewQuality) throws CameraAccessException {
@@ -151,7 +172,6 @@ public class Camera {
         if(cameraId == null) {
             throw new CameraAccessException(CameraAccessException.CAMERA_ERROR, "Couldn't find any useable back-facing camera.");
         }
-        // TODO - No camera?
 
         FlutterView.SurfaceTextureEntry surfaceTextureEntry = flutterView.createSurfaceTexture();
 
@@ -180,7 +200,7 @@ public class Camera {
     private void startBackgroundThread() {
         if(backgroundThread != null) return;
 
-        backgroundThread = new HandlerThread("cz.bcx.qr_scanner_background_thread");
+        backgroundThread = new HandlerThread("cz.bcx.qr_scanner.background_thread");
         backgroundThread.start();
         backgroundHandler = new Handler(backgroundThread.getLooper());
     }
@@ -199,7 +219,9 @@ public class Camera {
     }
 
     @SuppressLint("MissingPermission") //Put camera permission to your apps android manifest file.
-    protected void openCamera(CameraManager cameraManager, final MethodChannel.Result result, final CameraStateListener stateErrorListener) throws CameraAccessException {
+    protected void openCamera(CameraManager cameraManager, final MethodChannel.Result result, final CameraStateListener cameraStateListener) throws CameraAccessException {
+        this.stateListener = cameraStateListener;
+
         CameraDevice.StateCallback cameraDeviceStateCallback = new CameraDevice.StateCallback() {
             @Override
             public void onOpened(final CameraDevice cameraDevice) {
@@ -240,15 +262,15 @@ public class Camera {
 
             @Override
             public void onDisconnected(CameraDevice camera) {
-                if(stateErrorListener != null) {
-                    stateErrorListener.onCameraDisconnected();
+                if(Camera.this.stateListener != null) {
+                    Camera.this.stateListener.onCameraDisconnected();
                 }
             }
 
             @Override
             public void onError(CameraDevice camera, int error) {
-                if(stateErrorListener != null) {
-                    stateErrorListener.onCameraError(CameraStateError.getByErrorCode(error));
+                if(Camera.this.stateListener != null) {
+                    Camera.this.stateListener.onCameraError(CameraStateError.getByErrorCode(error));
                 }
             }
         };
@@ -279,7 +301,6 @@ public class Camera {
             captureRequestBuilder.addTarget(imageReader.getSurface());
 
             imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
-                MultiFormatReader qrReader = new MultiFormatReader();
                 byte[] planeBufferArray;
 
                 @Override
@@ -313,9 +334,11 @@ public class Camera {
                         );
 
                         BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(source));
-                        Result rawResult = qrReader.decode(bitmap);
+                        Result rawResult = qrReader.decodeWithState(bitmap);
 
-                        Log.i("BCX", "scanned: " + rawResult.toString());
+                        if(Camera.this.stateListener != null) {
+                            Camera.this.stateListener.onCodeScanned(rawResult.toString());
+                        }
 
                         lastTimeScanned = System.currentTimeMillis();
                     } catch (ReaderException e) {

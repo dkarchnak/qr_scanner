@@ -6,13 +6,24 @@ void main() => runApp(new MyApp());
 
 class MyApp extends StatefulWidget {
   @override
-  _MyAppState createState() => new _MyAppState(new ScannerController(previewQuality: PreviewQuality.high));
+  _MyAppState createState() => new _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
   ScannerController controller;
 
-  _MyAppState(this.controller);
+  String codeScanned = 'None';
+
+  _MyAppState() {
+    this.controller = new ScannerController(
+      previewQuality: PreviewQuality.high,
+      onCodeScanned: (String code) {
+        setState(() {
+          this.codeScanned = code;
+        });
+      }
+    );
+  }
 
   @override
   initState() {
@@ -41,45 +52,58 @@ class _MyAppState extends State<MyApp> {
           children: <Widget>[
             new ScannerPreview(controller),
             new Container(
-              alignment: Alignment.bottomCenter,
               child: new Container(
+                alignment: Alignment.bottomCenter,
                 width: double.infinity,
                 color: new Color.fromARGB(160, 60, 60, 60),
                 child: new Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: new Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: new Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: <Widget>[
-                      new Expanded(
-                        child: new IconButton(
-                            icon: new Icon(Icons.photo_camera),
-                            iconSize: 42.0,
-                            color: Colors.white,
-                            onPressed: () {
-                              this.controller.enableScanning();
-                            }
-                        )
+                      new Text(
+                        codeScanned,
+                        textAlign: TextAlign.center,
+                        style: new TextStyle(
+                          color: Colors.white,
+                          fontSize: 20.0
+                        ),
                       ),
-                      new Expanded(
-                          child: new IconButton(
-                              icon: new Icon(Icons.stop),
-                              iconSize: 42.0,
-                              color: Colors.white,
-                              onPressed: () {
-                                this.controller.stopPreview();
-                              }
-                          )
-                      ),
-                      new Expanded(
-                          child: new IconButton(
-                              icon: new Icon(Icons.play_arrow),
-                              iconSize: 42.0,
-                              color: Colors.white,
-                              onPressed: () {
-                                this.controller.startPreview();
-                              }
-                          )
-                      ),
+                      new Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          new Expanded(
+                              child: new IconButton(
+                                  icon: new Icon(this.controller.value.scanningEnabled ? Icons.favorite : Icons.favorite_border),
+                                  iconSize: 42.0,
+                                  color: this.controller.value.scanningEnabled ? Colors.white : Colors.red,
+                                  onPressed: () {
+                                    setState(() {
+                                      if(this.controller.value.scanningEnabled)
+                                        this.controller.disableScanning();
+                                      else
+                                        this.controller.enableScanning();
+                                    });
+                                  }
+                              )
+                          ),
+                          new Expanded(
+                              child: new IconButton(
+                                  icon: new Icon(this.controller.value.previewStarted ? Icons.stop : Icons.play_arrow),
+                                  iconSize: 42.0,
+                                  color: Colors.white,
+                                  onPressed: () {
+                                    setState(() {
+                                      if(this.controller.value.previewStarted) {
+                                        this.controller.stopPreview();
+                                      }
+                                      else this.controller.startPreview();
+                                    });
+                                  }
+                              )
+                          ),
+                        ],
+                      )
                     ],
                   )
                 ),

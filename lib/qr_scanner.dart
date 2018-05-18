@@ -102,7 +102,9 @@ class ScannerController extends ValueNotifier<ScannerValue> {
 
   StreamSubscription<dynamic> _eventChannelSubscription;
 
-  ScannerController({this.previewQuality : PreviewQuality.medium}) : super(new ScannerValue.uninitialized());
+  Function onCodeScanned;
+
+  ScannerController({this.previewQuality : PreviewQuality.medium, this.onCodeScanned}) : super(new ScannerValue.uninitialized());
 
   Future<Null> initialize() async {
     if(_disposed) {
@@ -147,10 +149,25 @@ class ScannerController extends ValueNotifier<ScannerValue> {
     }
   }
 
-  void _onEventReceived(dynamic event) {
+  void _onEventReceived(dynamic e) {
     if(_disposed) return;
 
-    print(event); //TODO
+    Map<dynamic, dynamic> event = e;
+
+    var eventType = event["eventType"];
+
+    switch(eventType) {
+      case "error":
+        // TODO
+        break;
+
+      case "codeScanned":
+      // Call onCodeScanned callback with code as a parameter
+        if(onCodeScanned != null) {
+          Function.apply(onCodeScanned, [event["code"]]);
+        }
+        break;
+    }
   }
 
   void startPreview() async {
