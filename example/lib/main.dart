@@ -33,15 +33,24 @@ class _MyAppState extends State<MyApp> {
 
   initController() async {
     try {
+      controller.addListener(() {
+        setState(() {});
+      });
+
       await controller.initialize();
+      controller.enableScanning();
       controller.startPreview();
 
-      print(controller.value.previewSize);
-
-      setState(() {});
-    } on PlatformException {
-      // TODO
+    } on ScannerException catch(e) {
+      print(e.message);
     }
+  }
+
+  _togglePreview() {
+    if(controller.value.previewStarted)
+      controller.stopPreview();
+    else
+      controller.startPreview();
   }
 
   @override
@@ -52,76 +61,53 @@ class _MyAppState extends State<MyApp> {
           children: <Widget>[
             new ScannerPreview(controller),
             new Container(
-              child: new Container(
-                alignment: Alignment.bottomCenter,
-                width: double.infinity,
-                color: new Color.fromARGB(160, 60, 60, 60),
-                child: new Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  child: new Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: <Widget>[
-                      new Text(
-                        codeScanned,
-                        textAlign: TextAlign.center,
-                        style: new TextStyle(
-                          color: Colors.white,
-                          fontSize: 20.0
-                        ),
-                      ),
-                      new Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          new Expanded(
-                              child: new IconButton(
-                                  icon: new Icon(this.controller.value.scanningEnabled ? Icons.favorite : Icons.favorite_border),
-                                  iconSize: 42.0,
-                                  color: this.controller.value.scanningEnabled ? Colors.white : Colors.red,
-                                  onPressed: () {
-                                    setState(() {
-                                      if(this.controller.value.scanningEnabled)
-                                        this.controller.disableScanning();
-                                      else
-                                        this.controller.enableScanning();
-                                    });
-                                  }
-                              )
-                          ),
-                          new Expanded(
-                              child: new IconButton(
-                                  icon: new Icon(this.controller.value.previewStarted ? Icons.stop : Icons.play_arrow),
-                                  iconSize: 42.0,
-                                  color: Colors.white,
-                                  onPressed: () {
-                                    setState(() {
-                                      if(this.controller.value.previewStarted) {
-                                        this.controller.stopPreview();
-                                      }
-                                      else this.controller.startPreview();
-                                    });
-                                  }
-                              )
-                          ),
-                        ],
-                      )
-                    ],
-                  )
-                ),
-              )
-            ),
-            new Center(
-              child: new SizedBox.fromSize(
-                size: new Size(200.0, 200.0),
-                child: new Container(
-                  decoration: new BoxDecoration(
-                    border: new Border.all(
-                      color: Colors.redAccent
-                    ),
-                  ),
+              alignment: Alignment.topCenter,
+              padding: const EdgeInsets.only(top: 32.0),
+              child: new Text(
+                codeScanned,
+                textAlign: TextAlign.center,
+                style: new TextStyle(
+                  color: Colors.white,
+                  fontSize: 20.0,
                 ),
               ),
-            )
-            ]
+            ), //Top scanned text
+            new Container( //Bottom control
+              width: double.infinity,
+              height: double.infinity,
+              alignment: Alignment.bottomCenter,
+              padding: const EdgeInsets.only(bottom: 8.0),
+              child: new GestureDetector(
+                onTap: _togglePreview,
+                child: new SizedBox.fromSize(
+                  size: new Size(48.0, 48.0),
+                  child: new Container(
+                    decoration: new ShapeDecoration(
+                      shadows: [
+                        new BoxShadow(
+                          color: const Color(0x66000000),
+                          blurRadius: 8.0,
+                          spreadRadius: 4.0
+                        )
+                      ],
+                      shape: new CircleBorder(
+                        side: new BorderSide(
+                          color: Colors.white,
+                          width: 2.0
+                        )
+                      )
+                    ),
+                    child: new Center(
+                      child: new Icon(
+                        this.controller.value.previewStarted ? Icons.stop : Icons.play_arrow,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                )
+              ),
+            ),
+          ]
         )
       )
     );

@@ -143,8 +143,6 @@ class ScannerController extends ValueNotifier<ScannerValue> {
       _initializeCompleter.complete(null);
       return _initializeCompleter.future;
     } on PlatformException catch(e) {
-      print(e.code);
-      print(e.message);
       throw new ScannerException(message: "Failed while initializing ScannerController.", cause: e);
     }
   }
