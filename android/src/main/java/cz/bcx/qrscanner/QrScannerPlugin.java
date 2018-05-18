@@ -34,8 +34,8 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
   private Activity activity;
 
   private static MethodChannel methodChannel;
-  private static EventChannel eventChannel;
-  private static EventChannel.EventSink eventSink;
+  private EventChannel eventChannel;
+  private EventChannel.EventSink eventSink;
 
   private Runnable initializeTask = null;
 
@@ -43,6 +43,8 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
     this.registrar = registrar;
     this.view = view;
     this.activity = activity;
+
+    this.registrar.addRequestPermissionsResultListener(this);
 
     this.activity.getApplication().registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
       @Override
@@ -150,22 +152,22 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
       public void run() {
         try {
           // Initialize eventChannel and eventSink.
-          if(QrScannerPlugin.eventChannel == null) {
-            QrScannerPlugin.eventChannel = new EventChannel(
+          if(QrScannerPlugin.this.eventChannel == null) {
+            QrScannerPlugin.this.eventChannel = new EventChannel(
                     registrar.messenger(),
                     "cz.bcx.qr_scanner/events"
             );
 
-            QrScannerPlugin.eventChannel.setStreamHandler(
+            QrScannerPlugin.this.eventChannel.setStreamHandler(
                 new EventChannel.StreamHandler() {
                   @Override
                   public void onListen(Object o, EventChannel.EventSink eventSink) {
-                    QrScannerPlugin.eventSink = eventSink;
+                    QrScannerPlugin.this.eventSink = eventSink;
                   }
 
                   @Override
                   public void onCancel(Object o) {
-                    QrScannerPlugin.eventSink = null;
+                    QrScannerPlugin.this.eventSink = null;
                   }
                 }
             );
@@ -203,6 +205,8 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
           });
 
           QrScannerPlugin.this.camera = camera;
+
+          initializeTask = null;
         } catch (CameraAccessException e) {
           result.error("CameraAccessException", "Exception raised when initializing qr scanner plugin.", e);
         }

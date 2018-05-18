@@ -16,14 +16,12 @@ import android.media.ImageReader;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
-import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
 import io.flutter.plugin.common.MethodChannel;
@@ -147,7 +145,7 @@ public class Camera {
 
         // Scan QR Codes only
         // Makes scanning much faster
-        Map<DecodeHintType, Object> hints = new HashMap<>();
+        HashMap<DecodeHintType, Object> hints = new HashMap<>();
         hints.put(DecodeHintType.POSSIBLE_FORMATS, Arrays.asList(BarcodeFormat.QR_CODE));
         this.qrReader.setHints(hints);
     }
