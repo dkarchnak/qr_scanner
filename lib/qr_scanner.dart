@@ -107,7 +107,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   Future<Null> initialize() async {
     if(_disposed) {
       //TODO - Throw an error?
-      return;
+//      return Future<Null>.;
     }
 
     try {
@@ -123,8 +123,8 @@ class ScannerController extends ValueNotifier<ScannerValue> {
       _textureId = methodResult['textureId'];
       value = value.copyWith(
         previewSize: new Size(
-          methodResult['previewWidth'],
-          methodResult['previewHeight']
+          methodResult['previewWidth'].toDouble(),
+          methodResult['previewHeight'].toDouble()
         )
       );
 
@@ -139,6 +139,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
       );
 
       _initializeCompleter.complete(null);
+      return _initializeCompleter.future;
     } on PlatformException catch(e) {
       print(e.code);
       print(e.message);
@@ -204,10 +205,10 @@ class ScannerController extends ValueNotifier<ScannerValue> {
 
     if(_initializeCompleter != null) {
       return _initializeCompleter.future.then((param) async {
-        await _eventChannelSubscription?.cancel();
         await _channel.invokeMethod(
           'dispose'
         );
+        await _eventChannelSubscription?.cancel();
       });
     }
     else {

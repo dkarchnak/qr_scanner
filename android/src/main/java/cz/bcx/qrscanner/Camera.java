@@ -20,11 +20,21 @@ import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
 
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.view.FlutterView;
+
+import com.google.zxing.BinaryBitmap;
+import com.google.zxing.LuminanceSource;
+import com.google.zxing.MultiFormatReader;
+import com.google.zxing.PlanarYUVLuminanceSource;
+import com.google.zxing.ReaderException;
+import com.google.zxing.Result;
+import com.google.zxing.common.HybridBinarizer;
+
 
 @TargetApi(Build.VERSION_CODES.LOLLIPOP)
 public class Camera {
@@ -84,6 +94,8 @@ public class Camera {
         void onCameraError(CameraStateError cameraStateError);
     }
 
+    private static final int BETWEEN_SCANS_DELAY = 333; //ms
+
     private HandlerThread backgroundThread;
     private Handler backgroundHandler;
 
@@ -94,11 +106,13 @@ public class Camera {
     private CameraDevice cameraDevice;
     private CameraCaptureSession cameraCaptureSession;
 
-    private CaptureRequest previewRequest;
     private CaptureRequest captureRequest;
 
     private Surface previewSurface;
     private Size previewSize;
+
+    private boolean scanningEnabled = false;
+    private long lastTimeScanned = 0;
 
     protected Camera(String cameraId, FlutterView.SurfaceTextureEntry textureEntry, Size previewSize, Size captureSize) {
         this.cameraId = cameraId;
@@ -207,8 +221,8 @@ public class Camera {
                                 response.put("textureId", Camera.this.getTextureId());
 
                                 Size res = Camera.this.getPreviewResolution();
-                                response.put("resWidth", res.getWidth());
-                                response.put("resHeight", res.getHeight());
+                                response.put("previewWidth", res.getWidth());
+                                response.put("previewHeight", res.getHeight());
                                 result.success(response);
                             }
 
@@ -226,7 +240,9 @@ public class Camera {
 
             @Override
             public void onDisconnected(CameraDevice camera) {
-                if(stateErrorListener != null) stateErrorListener.onCameraDisconnected();
+                if(stateErrorListener != null) {
+                    stateErrorListener.onCameraDisconnected();
+                }
             }
 
             @Override
@@ -246,52 +262,90 @@ public class Camera {
 
     protected void stopPreview() throws CameraAccessException {
         cameraCaptureSession.stopRepeating();
-        previewRequest = null;
+        captureRequest = null;
+
+        stopBackgroundThread();
     }
 
     protected void startPreview() throws CameraAccessException {
-        // TODO - is initialized?
-        if(previewRequest == null) {
-            CaptureRequest.Builder previewRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            previewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-            previewRequestBuilder.addTarget(previewSurface);
-
-            previewRequest = previewRequestBuilder.build();
-        }
-
-        cameraCaptureSession.setRepeatingRequest(
-            previewRequest,
-            null,
-            null
-        );
-    }
-
-    // TODO - WIP -
-    protected void startScanning() throws CameraAccessException {
         if(captureRequest == null) {
             startBackgroundThread();
 
-            CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            CaptureRequest.Builder captureRequestBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+
+            captureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+
+            captureRequestBuilder.addTarget(previewSurface);
             captureRequestBuilder.addTarget(imageReader.getSurface());
 
-            captureRequest = captureRequestBuilder.build();
-
             imageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                MultiFormatReader qrReader = new MultiFormatReader();
+                byte[] planeBufferArray;
+
                 @Override
                 public void onImageAvailable(ImageReader reader) {
                     Image image = reader.acquireLatestImage();
-                    Log.i("BCX", "Res: " + image.getWidth() + "x" + image.getHeight());
-                    image.close();
+
+                    if (image == null) return;
+
+                    if (!scanningEnabled || System.currentTimeMillis() - lastTimeScanned < BETWEEN_SCANS_DELAY) {
+                        image.close();
+                        return;
+                    }
+
+                    try {
+                        ByteBuffer firstPlaneBuffer = image.getPlanes()[0].getBuffer();
+                        if (planeBufferArray == null || planeBufferArray.length != firstPlaneBuffer.capacity()) {
+                            planeBufferArray = new byte[firstPlaneBuffer.capacity()];
+                        }
+
+                        firstPlaneBuffer.get(planeBufferArray);
+
+                        LuminanceSource source = new PlanarYUVLuminanceSource(
+                                planeBufferArray,
+                                image.getWidth(),
+                                image.getHeight(),
+                                0,
+                                0,
+                                image.getWidth(),
+                                image.getHeight(),
+                                false
+                        );
+
+                        BinaryBitmap bitmap = new BinaryBitmap(new HybridBinarizer(source));
+                        Result rawResult = qrReader.decode(bitmap);
+
+                        Log.i("BCX", "scanned: " + rawResult.toString());
+
+                        lastTimeScanned = System.currentTimeMillis();
+                    } catch (ReaderException e) {
+                        e.printStackTrace();
+                    } catch (NullPointerException e) {
+                        e.printStackTrace();
+                    } finally {
+                        qrReader.reset();
+                        image.close();
+                    }
                 }
             },
             backgroundHandler);
+
+            captureRequest = captureRequestBuilder.build();
         }
 
-        cameraCaptureSession.capture(
+        cameraCaptureSession.setRepeatingRequest(
             captureRequest,
             null,
             backgroundHandler
         );
+    }
+
+    protected void enableScanning() {
+        scanningEnabled = true;
+    }
+
+    protected void disableScanning() {
+        scanningEnabled = false;
     }
 
     protected void dispose() {

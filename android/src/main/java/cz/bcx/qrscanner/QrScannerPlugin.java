@@ -56,6 +56,7 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
         // TODO
       }
 
+
       @Override
       public void onActivityPaused(Activity activity) {
         // TODO
@@ -209,6 +210,7 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
   }
 
   private void onStartPreview() {
+    // TODO - Error Handling
     try {
       camera.startPreview();
     } catch (CameraAccessException e) {
@@ -217,6 +219,7 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
   }
 
   private void onStopPreview() {
+    // TODO - Error Handling
     try {
       camera.stopPreview();
     } catch (CameraAccessException e) {
@@ -225,18 +228,17 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
   }
 
   private void onEnableScanning() {
-    try {
-      camera.startScanning();
-    } catch (CameraAccessException e) {
-      e.printStackTrace();
-    }
+    // TODO - Error Handling
+    camera.enableScanning();
   }
 
   private void onDisableScanning() {
-
+    // TODO - Error Handling
+    camera.disableScanning();
   }
 
   private void onDispose() {
-
+    // TODO - Error handling
+    camera.dispose();
   }
 }

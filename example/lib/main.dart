@@ -25,6 +25,8 @@ class _MyAppState extends State<MyApp> {
       await controller.initialize();
       controller.startPreview();
 
+      print(controller.value.previewSize);
+
       setState(() {});
     } on PlatformException {
       // TODO
