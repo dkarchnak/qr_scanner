@@ -34,7 +34,12 @@ class _MyAppState extends State<MyApp> {
   initController() async {
     try {
       controller.addListener(() {
-        setState(() {});
+        if(controller.value.error != null) {
+          controller.stopPreview();
+          codeScanned = controller.value.error;
+        }
+
+        setState(() {}); //Update state
       });
 
       await controller.initialize();

@@ -56,29 +56,34 @@ class ScannerValue {
 
   final String error;
 
+  final bool disposed;
+
   const ScannerValue({
     this.initialized,
     this.previewStarted,
     this.previewSize,
     this.scanningEnabled,
-    this.error
+    this.error,
+    this.disposed
   });
 
-  const ScannerValue.uninitialized() : this(initialized: false, previewStarted: false, scanningEnabled: false);
+  const ScannerValue.uninitialized() : this(initialized: false, previewStarted: false, scanningEnabled: false, disposed: false);
 
   ScannerValue copyWith({
     bool initialized,
     bool previewStarted,
     Size previewSize,
     bool scanningEnabled,
-    String error
+    String error,
+    bool disposed
   }) {
     return new ScannerValue(
       initialized: initialized ?? this.initialized,
       previewStarted: previewStarted ?? this.previewStarted,
       previewSize: previewSize ?? this.previewSize,
       scanningEnabled: scanningEnabled ?? this.scanningEnabled,
-      error: error ?? this.error
+      error: error ?? this.error,
+      disposed: disposed ?? this.disposed
     );
   }
 
@@ -98,18 +103,19 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   PreviewQuality previewQuality;
   int _textureId;
 
-  bool _disposed = false;
-
   StreamSubscription<dynamic> _eventChannelSubscription;
 
   Function onCodeScanned;
 
   ScannerController({this.previewQuality : PreviewQuality.medium, this.onCodeScanned}) : super(new ScannerValue.uninitialized());
 
+
+  int get textureId => _textureId;
+
+
   Future<Null> initialize() async {
-    if(_disposed) {
-      //TODO - Throw an error?
-//      return Future<Null>.;
+    if(value.disposed) {
+      throw new ScannerException(message: "This instace of ScannerController has already been disposed. Please make a new one.");
     }
 
     try {
@@ -148,7 +154,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   }
 
   void _onEventReceived(dynamic e) {
-    if(_disposed) return;
+    if(value.disposed) return;
 
     Map<dynamic, dynamic> event = e;
 
@@ -156,7 +162,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
 
     switch(eventType) {
       case "error":
-        // TODO
+        value = value.copyWith(error: event["errorMessage"]);
         break;
 
       case "codeScanned":
@@ -169,7 +175,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   }
 
   void startPreview() async {
-    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+    if(value.initialized && !value.disposed) { //Error if not initialized or disposed
       await _channel.invokeMethod(
         'startPreview',
       );
@@ -179,7 +185,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   }
 
   void stopPreview() async {
-    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+    if(value.initialized && !value.disposed) { //Error if not initialized or disposed
       await _channel.invokeMethod(
         'stopPreview'
       );
@@ -189,7 +195,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   }
 
   void enableScanning() async {
-    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+    if(value.initialized && !value.disposed) { //Error if not initialized or disposed
       await _channel.invokeMethod(
           'enableScanning'
       );
@@ -199,7 +205,7 @@ class ScannerController extends ValueNotifier<ScannerValue> {
   }
 
   void disableScanning() async {
-    if(value.initialized && !_disposed) { //Error if not initialized or disposed
+    if(value.initialized && !value.disposed) { //Error if not initialized or disposed
       await _channel.invokeMethod(
           'disableScanning'
       );
@@ -210,11 +216,11 @@ class ScannerController extends ValueNotifier<ScannerValue> {
 
   @override
   Future<Null> dispose() {
-    if(_disposed) {
+    if(value.disposed) {
       return new Future<Null>.value(null);
     }
 
-    _disposed = true;
+    value = value.copyWith(initialized: false, disposed: true);
 
     super.dispose();
 

@@ -58,7 +58,6 @@ public class QrScannerPlugin implements MethodCallHandler, PluginRegistry.Reques
         // TODO
       }
 
-
       @Override
       public void onActivityPaused(Activity activity) {
         // TODO
