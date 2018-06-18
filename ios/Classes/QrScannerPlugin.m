@@ -1,5 +1,6 @@
 #import "QrScannerPlugin.h"
 #import <AVFoundation/AVFoundation.h>
+#import <libkern/OSAtomic.h>
 
 @interface NSError (FlutterError)
 @property(readonly, nonatomic) FlutterError *flutterError;
@@ -13,16 +14,21 @@
 }
 @end
 
-@interface QRCam : NSObject<AVCaptureMetadataOutputObjectsDelegate>
+@interface QRCam : NSObject<FlutterTexture, AVCaptureMetadataOutputObjectsDelegate, AVCaptureVideoDataOutputSampleBufferDelegate, FlutterStreamHandler>
 @property(readonly, nonatomic) AVCaptureSession *captureSession;
 @property(readonly, nonatomic) AVCaptureDevice *captureDevice;
 @property(readonly, nonatomic) AVCaptureDeviceInput *captureDeviceInput;
 @property(readonly, nonatomic) AVCaptureMetadataOutput *captureMetadataOutput;
 @property(readonly, nonatomic) AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
+@property(readonly, nonatomic) AVCaptureVideoDataOutput *captureVideoOutput;
+@property(readonly, nonatomic) CGSize previewSize;
 @property(readonly, nonatomic) dispatch_queue_t serialQueue;
-
+@property(readonly) CVPixelBufferRef volatile latestPixelBuffer;
 @property(readonly, nonatomic) UIViewController *cameraViewController;
 @property(readonly, nonatomic) UIView *cameraView;
+
+@property(nonatomic) FlutterEventChannel *eventChannel;
+@property(nonatomic) FlutterEventSink eventSink;
 
 @property(readonly, nonatomic) int64_t textureId;
 
@@ -76,6 +82,9 @@
     CGRect rc = viewController.view.bounds;
     rc.size.width = 500.0;
     rc.size.height = 500.0;
+    _previewSize.width = 500.0;
+    _previewSize.height = 500.0;
+    
     
     [_captureMetadataOutput setRectOfInterest:rc];
     
@@ -91,8 +100,6 @@
     [viewController addChildViewController: _cameraViewController];
     [viewController.view addSubview: _cameraView];
     
-    [_captureSession startRunning];
-    
     return self;
 }
 
@@ -107,6 +114,36 @@
     
 }
 
+- (CVPixelBufferRef)copyPixelBuffer {
+    CVPixelBufferRef pixelBuffer = _latestPixelBuffer;
+    while (!OSAtomicCompareAndSwapPtrBarrier(pixelBuffer, nil, (void **)&_latestPixelBuffer)) {
+        pixelBuffer = _latestPixelBuffer;
+    }
+    NSLog(@"YES"); //TODO dodelat
+    return pixelBuffer;
+}
+
+#pragma mark Video data capture
+
+- (void)captureOutput:(AVCaptureOutput *)output
+didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+       fromConnection:(AVCaptureConnection *)connection {
+   
+        CVPixelBufferRef newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+        CFRetain(newBuffer);
+        CVPixelBufferRef old = _latestPixelBuffer;
+        while (!OSAtomicCompareAndSwapPtrBarrier(old, newBuffer, (void **)&_latestPixelBuffer)) {
+            old = _latestPixelBuffer;
+        }
+        if (old != nil) {
+            CFRelease(old);
+        }
+       
+    
+}
+
+#pragma mark Metadata capture
+
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
 didOutputMetadataObjects:(NSArray *)metadataObjects
        fromConnection:(AVCaptureConnection *)connection {
@@ -116,6 +153,18 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     }
 
 }
+
+- (FlutterError *_Nullable)onCancelWithArguments:(id _Nullable)arguments {
+    _eventSink = nil;
+    return nil;
+}
+
+- (FlutterError *_Nullable)onListenWithArguments:(id _Nullable)arguments
+                                       eventSink:(nonnull FlutterEventSink)events {
+    _eventSink = events;
+    return nil;
+}
+
 - (void)start {
     [_captureSession startRunning];
 }
@@ -178,11 +227,27 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
         _camera = [[QRCam alloc] initCamera: _viewController
                            resolutionPreset: quality
                                       error: &error];
-        result(@"iOS - init success");
+        
+        int64_t textureId = [_registry registerTexture:_camera];
+        
+        FlutterEventChannel *eventChannel = [FlutterEventChannel
+                                             eventChannelWithName:[NSString
+                                                                   stringWithFormat:@"cz.bcx.qr_scanner/events",
+                                                                   textureId]
+                                             binaryMessenger:_messenger];
+        [eventChannel setStreamHandler:_camera];
+        _camera.eventChannel = eventChannel;
+        
+        result(@{
+                 @"textureId" : @(textureId),
+                 @"previewWidth" : @(_camera.previewSize.width),
+                 @"previewHeight" : @(_camera.previewSize.height),
+                 });
         
     }else if([@"startPreview" isEqualToString:call.method]){
         
         NSLog(@"start...");
+        [_camera start];
         
     }else if([@"stopPreview" isEqualToString:call.method]){
         
