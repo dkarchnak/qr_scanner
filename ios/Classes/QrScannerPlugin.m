@@ -21,11 +21,15 @@
 @property(readonly, nonatomic) AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
 @property(readonly, nonatomic) dispatch_queue_t serialQueue;
 
+@property(readonly, nonatomic) UIViewController *cameraViewController;
+@property(readonly, nonatomic) UIView *cameraView;
+
 @property(readonly, nonatomic) int64_t textureId;
 
 - (instancetype)initWithCameraName:(NSString *)cameraName
-                  resolutionPreset:(NSString *)resolutionPreset
-                             error:(NSError **)error;
+                            viewController: (UIViewController *) viewController
+                            resolutionPreset:(NSString *)resolutionPreset
+                            error:(NSError **)error;
 - (void)start;
 - (void)stop;
 
@@ -35,10 +39,11 @@
 @implementation QRCam
 
 -(instancetype)initWithCameraName:(NSString *)cameraName
-                 resolutionPreset:(NSString *)resolutionPreset
+                            viewController: (UIViewController *) viewController
+                            resolutionPreset:(NSString *)resolutionPreset
                             error:(NSError **)error{
     self = [super init];
-    //self = [super initWithFrame: frame] flutter view?
+    
     _captureSession = [[AVCaptureSession alloc] init];
     AVCaptureSessionPreset preset;
     if ([resolutionPreset isEqualToString:@"high"]) {
@@ -69,11 +74,22 @@
     _serialQueue = dispatch_queue_create("qrCodeQueue", NULL); //CANT FORGOT STOP QUEUE
     [_captureMetadataOutput setMetadataObjectsDelegate:self queue:_serialQueue];
     [_captureMetadataOutput setMetadataObjectTypes:[self barcodeTypes]];
-    //[_captureMetadataOutput setRectOfInterest:view]; predat flutter view?
+    
+    CGRect rc = viewController.view.bounds;
+    
+    [_captureMetadataOutput setRectOfInterest:rc];
+    
+    _cameraViewController = [[UIViewController alloc] init];
+    _cameraView = [[UIView alloc] init];
+    [_cameraView setBounds: rc];
+    [_cameraView setCenter: viewController.view.center];
     
     _captureVideoPreviewLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSession:_captureSession];
-   // _captureVideoPreviewLayer.frame = self.frame; to same flutter view?
-   // [self.layer addSublayer: _captureVideoPreviewLayer];
+    [_captureVideoPreviewLayer setFrame: rc];
+    [_cameraView.layer addSublayer: _captureVideoPreviewLayer];
+    
+    [viewController addChildViewController: _cameraViewController];
+    [viewController.view addSubview: _cameraView];
     
     return self;
 }
@@ -108,7 +124,7 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
 @interface QrScannerPlugin ()
 @property(readonly, nonatomic) NSObject<FlutterTextureRegistry> *registry;
 @property(readonly, nonatomic) NSObject<FlutterBinaryMessenger> *messenger;
-//@property(readonly, nonatomic) NSObject<FlutterView> *flutterView;
+@property(readonly, nonatomic) UIViewController *viewController;
 @property(readonly, nonatomic) QRCam *camera;
 @end
 
@@ -128,7 +144,7 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     NSAssert(self, @"super init cannot be nil");
     _registry = registry;
     _messenger = messenger;
-   // _flutterView = flutterView;
+    _viewController = (UIViewController *)messenger;
     return self;
 }
 
