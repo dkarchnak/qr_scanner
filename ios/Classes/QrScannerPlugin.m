@@ -152,6 +152,11 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     NSLog(@"Method call: %@", call.method);
     if([@"initialize" isEqualToString:call.method]){
         
+        if([call.arguments class] != [NSMutableDictionary class]){
+            NSLog(@"Call's arguments is not instance of a Map.");
+            return;
+        }
+        
         NSLog(@"init...");
         
     }else if([@"startPreview" isEqualToString:call.method]){
