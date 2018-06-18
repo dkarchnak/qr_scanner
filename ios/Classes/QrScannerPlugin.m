@@ -26,8 +26,7 @@
 
 @property(readonly, nonatomic) int64_t textureId;
 
-- (instancetype)initWithCameraName:(NSString *)cameraName
-                            viewController: (UIViewController *) viewController
+- (instancetype)initCamera: (UIViewController *) viewController
                             resolutionPreset:(NSString *)resolutionPreset
                             error:(NSError **)error;
 - (void)start;
@@ -38,8 +37,7 @@
 
 @implementation QRCam
 
--(instancetype)initWithCameraName:(NSString *)cameraName
-                            viewController: (UIViewController *) viewController
+-(instancetype)initCamera:  (UIViewController *) viewController
                             resolutionPreset:(NSString *)resolutionPreset
                             error:(NSError **)error{
     self = [super init];
@@ -57,7 +55,7 @@
     }
     
     _captureSession.sessionPreset = preset;
-    _captureDevice = [AVCaptureDevice deviceWithUniqueID:cameraName];
+    _captureDevice = [AVCaptureDevice defaultDeviceWithMediaType: AVMediaTypeVideo];
     NSError *localError = nil;
     _captureDeviceInput =
     [AVCaptureDeviceInput deviceInputWithDevice:_captureDevice error:&localError];
@@ -76,6 +74,8 @@
     [_captureMetadataOutput setMetadataObjectTypes:[self barcodeTypes]];
     
     CGRect rc = viewController.view.bounds;
+    rc.size.width = 500.0;
+    rc.size.height = 500.0;
     
     [_captureMetadataOutput setRectOfInterest:rc];
     
@@ -90,6 +90,8 @@
     
     [viewController addChildViewController: _cameraViewController];
     [viewController.view addSubview: _cameraView];
+    
+    [_captureSession startRunning];
     
     return self;
 }
@@ -108,7 +110,10 @@
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
 didOutputMetadataObjects:(NSArray *)metadataObjects
        fromConnection:(AVCaptureConnection *)connection {
-   
+    if(metadataObjects != nil && [metadataObjects count] > 0){
+        AVMetadataObject *data = metadataObjects[0];
+        NSLog(@"SCAN DATA: %@", data);
+    }
 
 }
 - (void)start {
@@ -134,30 +139,46 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
                                      methodChannelWithName: @"cz.bcx.qr_scanner"
                                      binaryMessenger: [registrar messenger]];
     
-    QrScannerPlugin *instance = [[QrScannerPlugin alloc] initWithRegistry:[registrar textures] messenger:[registrar messenger]];
+    
+    QrScannerPlugin *instance = [[QrScannerPlugin alloc] initWithRegistry:[registrar textures] messenger:[registrar messenger] viewController: (UIViewController *)[registrar messenger]];
     [registrar addMethodCallDelegate:instance channel:channel];
 }
 
 - (instancetype)initWithRegistry:(NSObject<FlutterTextureRegistry> *)registry
-                       messenger:(NSObject<FlutterBinaryMessenger> *)messenger {
+                        messenger:(NSObject<FlutterBinaryMessenger> *)messenger
+                        viewController: (UIViewController *) viewController{
     self = [super init];
     NSAssert(self, @"super init cannot be nil");
     _registry = registry;
     _messenger = messenger;
-    _viewController = (UIViewController *)messenger;
+    _viewController = viewController;
+    
+    CGRect rc = _viewController.view.bounds;
+    NSLog(@"VIEW w: %f h: %f", rc.size.width, rc.size.height);
+    
+    
     return self;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
     NSLog(@"Method call: %@", call.method);
     if([@"initialize" isEqualToString:call.method]){
-        
-        if([call.arguments class] != [NSMutableDictionary class]){
+        if(![[call.arguments class] isSubclassOfClass:[NSMutableDictionary class]]){
             NSLog(@"Call's arguments is not instance of a Map.");
             return;
         }
         
+        NSMutableDictionary *arg = (NSMutableDictionary *)call.arguments;
+        NSString *quality = [arg objectForKey:@"previewQuality"];
+        
+        NSLog(@"QUALITY: %@", quality);
         NSLog(@"init...");
+        
+        NSError *error;
+        _camera = [[QRCam alloc] initCamera: _viewController
+                           resolutionPreset: quality
+                                      error: &error];
+        result(@"iOS - init success");
         
     }else if([@"startPreview" isEqualToString:call.method]){
         
@@ -179,6 +200,8 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
         
         NSLog(@"dispose...");
         
+    }else {
+        result(FlutterMethodNotImplemented);
     }
 }
 @end
