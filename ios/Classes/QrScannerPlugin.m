@@ -158,11 +158,7 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
        fromConnection:(AVCaptureConnection *)connection {
     if(_enableScanning == YES && metadataObjects != nil && [metadataObjects count] > 0){
         AVMetadataObject *data = metadataObjects[0];
-       // AVMetadataMachineReadableCodeObject *barCodeObject;
         NSString *code = [(AVMetadataMachineReadableCodeObject *)data stringValue];;
-        
-        NSString *text = [NSString stringWithFormat:@"SCAN DATA: %@", code];
-        NSLog(@"%@",text);
         
         _eventSink(@{
                      @"eventType" : @"codeScanned",
@@ -251,16 +247,13 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     NSLog(@"Method call: %@", call.method);
     if([@"initialize" isEqualToString:call.method]){
         if(![[call.arguments class] isSubclassOfClass:[NSMutableDictionary class]]){
-            _eventSink(@{
-                         @"eventType" : @"error",
-                         @"errorMessage" : @"Call's arguments is not instance of a Map."
-                         });            return;
+            NSLog(@"Call's arguments is not instance of a Map.");
+            return;
         }
         
         NSMutableDictionary *arg = (NSMutableDictionary *)call.arguments;
         NSString *quality = [arg objectForKey:@"previewQuality"];
-        
-        NSLog(@"QUALITY: %@", quality);
+      
         NSLog(@"init...");
         
         NSError *error;
@@ -288,26 +281,31 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
         
         NSLog(@"start...");
         [_camera start];
+        result(nil);
         
     }else if([@"stopPreview" isEqualToString:call.method]){
         
         NSLog(@"stop...");
         [_camera stop];
+        result(nil);
         
     }else if([@"enableScanning" isEqualToString:call.method]){
         
         NSLog(@"enable...");
         [_camera enable];
+        result(nil);
         
     }else if([@"disableScanning" isEqualToString:call.method]){
         
         NSLog(@"disable...");
         [_camera disable];
+        result(nil);
         
     }else if([@"dispose" isEqualToString:call.method]){
         
         NSLog(@"dispose...");
         [_camera dispose];
+        result(nil);
         
     }else {
         result(FlutterMethodNotImplemented);
