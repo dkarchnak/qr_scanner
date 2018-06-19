@@ -21,6 +21,7 @@
 @property(readonly, nonatomic) AVCaptureMetadataOutput *captureMetadataOutput;
 @property(readonly, nonatomic) AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
 @property(readonly, nonatomic) AVCaptureVideoDataOutput *captureVideoOutput;
+@property(readonly, nonatomic) UIView *highlightView;
 @property(readonly, nonatomic) CGSize previewSize;
 @property(readonly, nonatomic) dispatch_queue_t serialQueue;
 @property(readonly) CVPixelBufferRef volatile latestPixelBuffer;
@@ -77,9 +78,9 @@
     
     _captureMetadataOutput = [[AVCaptureMetadataOutput alloc] init];
     [_captureSession addOutput: _captureMetadataOutput];
-    
-    _serialQueue = dispatch_queue_create("qrCodeQueue", NULL);
-    [_captureMetadataOutput setMetadataObjectsDelegate:self queue:_serialQueue];
+    //TODO use main queue for highlighView
+    //_serialQueue = dispatch_queue_create("qrCodeQueue", NULL);
+    [_captureMetadataOutput setMetadataObjectsDelegate:self queue:dispatch_get_main_queue()];
     [_captureMetadataOutput setMetadataObjectTypes:[self barcodeTypes]];
     
     CGRect rc = viewController.view.bounds;
@@ -87,8 +88,6 @@
     rc.size.height = 500;
     _previewSize = rc.size;
 
-
-    
     [_captureMetadataOutput setRectOfInterest:rc];
     
     _cameraViewController = [[UIViewController alloc] init];
@@ -101,7 +100,14 @@
     [_cameraView.layer addSublayer: _captureVideoPreviewLayer];
     
     [viewController addChildViewController: _cameraViewController];
+    
+    _highlightView = [[UIView alloc] init];
+    _highlightView.autoresizingMask = UIViewAutoresizingFlexibleTopMargin|UIViewAutoresizingFlexibleLeftMargin|UIViewAutoresizingFlexibleRightMargin|UIViewAutoresizingFlexibleBottomMargin;
+    _highlightView.layer.borderColor = [UIColor greenColor].CGColor;
+    _highlightView.layer.borderWidth = 2;
+    
     [viewController.view addSubview: _cameraView];
+    [_cameraView addSubview: _highlightView];
     
     return self;
 }
@@ -156,15 +162,24 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
 didOutputMetadataObjects:(NSArray *)metadataObjects
        fromConnection:(AVCaptureConnection *)connection {
+    
+    CGRect highlightViewRect = CGRectZero;
+    AVMetadataMachineReadableCodeObject *barCodeObject;
+
     if(_enableScanning == YES && metadataObjects != nil && [metadataObjects count] > 0){
         AVMetadataObject *data = metadataObjects[0];
-        NSString *code = [(AVMetadataMachineReadableCodeObject *)data stringValue];;
-        
+        barCodeObject = (AVMetadataMachineReadableCodeObject *)[_captureVideoPreviewLayer transformedMetadataObjectForMetadataObject:(AVMetadataMachineReadableCodeObject *)data];
+        highlightViewRect = barCodeObject.bounds;
+
+        NSString *code = [(AVMetadataMachineReadableCodeObject *)data stringValue];
+    
         _eventSink(@{
                      @"eventType" : @"codeScanned",
                      @"code" : code
                      });
     }
+    
+    [_highlightView setFrame: highlightViewRect];
 
 }
 
@@ -220,9 +235,13 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     [_cameraView removeFromSuperview];
     _cameraView = nil;
     
+    [_highlightView removeFromSuperview];
+    _highlightView = nil;
+    
     _captureSession = nil;
     
-    _serialQueue = nil;
+    //TODO main
+    //_serialQueue = nil;
 }
 
 @end
