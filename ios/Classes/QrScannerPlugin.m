@@ -29,6 +29,8 @@
 
 @property(nonatomic) FlutterEventChannel *eventChannel;
 @property(nonatomic) FlutterEventSink eventSink;
+@property(nonatomic) BOOL enableScanning;
+
 
 @property(readonly, nonatomic) int64_t textureId;
 
@@ -47,6 +49,7 @@
                             resolutionPreset:(NSString *)resolutionPreset
                             error:(NSError **)error{
     self = [super init];
+    _enableScanning = NO;
     
     _captureSession = [[AVCaptureSession alloc] init];
     AVCaptureSessionPreset preset;
@@ -80,11 +83,11 @@
     [_captureMetadataOutput setMetadataObjectTypes:[self barcodeTypes]];
     
     CGRect rc = viewController.view.bounds;
-    rc.size.width = 500.0;
-    rc.size.height = 500.0;
-    _previewSize.width = 500.0;
-    _previewSize.height = 500.0;
-    
+    rc.size.width = 500;
+    rc.size.height = 500;
+    _previewSize = rc.size;
+
+
     
     [_captureMetadataOutput setRectOfInterest:rc];
     
@@ -119,7 +122,6 @@
     while (!OSAtomicCompareAndSwapPtrBarrier(pixelBuffer, nil, (void **)&_latestPixelBuffer)) {
         pixelBuffer = _latestPixelBuffer;
     }
-    NSLog(@"YES"); //TODO dodelat
     return pixelBuffer;
 }
 
@@ -129,16 +131,23 @@
 didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
        fromConnection:(AVCaptureConnection *)connection {
    
-        CVPixelBufferRef newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
-        CFRetain(newBuffer);
-        CVPixelBufferRef old = _latestPixelBuffer;
-        while (!OSAtomicCompareAndSwapPtrBarrier(old, newBuffer, (void **)&_latestPixelBuffer)) {
-            old = _latestPixelBuffer;
-        }
-        if (old != nil) {
-            CFRelease(old);
-        }
-       
+    CVPixelBufferRef newBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+    CFRetain(newBuffer);
+    CVPixelBufferRef old = _latestPixelBuffer;
+    while (!OSAtomicCompareAndSwapPtrBarrier(old, newBuffer, (void **)&_latestPixelBuffer)) {
+        old = _latestPixelBuffer;
+    }
+    if (old != nil) {
+        CFRelease(old);
+    }
+    
+    if (!CMSampleBufferDataIsReady(sampleBuffer)) {
+        _eventSink(@{
+                     @"eventType" : @"error",
+                     @"errorMessage" : @"sample buffer is not ready. Skipping sample"
+                     });
+        return;
+    }
     
 }
 
@@ -147,9 +156,18 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
 - (void)captureOutput:(AVCaptureOutput *)captureOutput
 didOutputMetadataObjects:(NSArray *)metadataObjects
        fromConnection:(AVCaptureConnection *)connection {
-    if(metadataObjects != nil && [metadataObjects count] > 0){
+    if(_enableScanning == YES && metadataObjects != nil && [metadataObjects count] > 0){
         AVMetadataObject *data = metadataObjects[0];
-        NSLog(@"SCAN DATA: %@", data);
+       // AVMetadataMachineReadableCodeObject *barCodeObject;
+        NSString *code = [(AVMetadataMachineReadableCodeObject *)data stringValue];;
+        
+        NSString *text = [NSString stringWithFormat:@"SCAN DATA: %@", code];
+        NSLog(@"%@",text);
+        
+        _eventSink(@{
+                     @"eventType" : @"codeScanned",
+                     @"code" : code
+                     });
     }
 
 }
@@ -171,6 +189,26 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
 
 - (void)stop {
     [_captureSession stopRunning];
+}
+
+- (void)enable{
+    _enableScanning = YES;
+}
+
+- (void)disable{
+    _enableScanning = NO;
+}
+
+- (void)dispose{
+    for (AVCaptureInput *input in [_captureSession inputs]) {
+        [_captureSession removeInput:input];
+    }
+    for (AVCaptureOutput *output in [_captureSession outputs]) {
+        [_captureSession removeOutput:output];
+    }
+    
+   
+    _captureDeviceInput = nil;
 }
 
 @end
@@ -213,8 +251,10 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     NSLog(@"Method call: %@", call.method);
     if([@"initialize" isEqualToString:call.method]){
         if(![[call.arguments class] isSubclassOfClass:[NSMutableDictionary class]]){
-            NSLog(@"Call's arguments is not instance of a Map.");
-            return;
+            _eventSink(@{
+                         @"eventType" : @"error",
+                         @"errorMessage" : @"Call's arguments is not instance of a Map."
+                         });            return;
         }
         
         NSMutableDictionary *arg = (NSMutableDictionary *)call.arguments;
@@ -252,18 +292,22 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     }else if([@"stopPreview" isEqualToString:call.method]){
         
         NSLog(@"stop...");
+        [_camera stop];
         
     }else if([@"enableScanning" isEqualToString:call.method]){
         
         NSLog(@"enable...");
+        [_camera enable];
         
     }else if([@"disableScanning" isEqualToString:call.method]){
         
         NSLog(@"disable...");
+        [_camera disable];
         
     }else if([@"dispose" isEqualToString:call.method]){
         
         NSLog(@"dispose...");
+        [_camera dispose];
         
     }else {
         result(FlutterMethodNotImplemented);
