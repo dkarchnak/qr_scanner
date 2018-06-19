@@ -69,7 +69,7 @@
     _captureDeviceInput =
     [AVCaptureDeviceInput deviceInputWithDevice:_captureDevice error:&localError];
     if (localError) {
-        *error = localError; //TODO send flutter event error
+        *error = localError;
         return nil;
     }
     
@@ -78,7 +78,7 @@
     _captureMetadataOutput = [[AVCaptureMetadataOutput alloc] init];
     [_captureSession addOutput: _captureMetadataOutput];
     
-    _serialQueue = dispatch_queue_create("qrCodeQueue", NULL); //CANT FORGOT STOP QUEUE
+    _serialQueue = dispatch_queue_create("qrCodeQueue", NULL);
     [_captureMetadataOutput setMetadataObjectsDelegate:self queue:_serialQueue];
     [_captureMetadataOutput setMetadataObjectTypes:[self barcodeTypes]];
     
@@ -203,8 +203,26 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
         [_captureSession removeOutput:output];
     }
     
-   
+    
+    if (_latestPixelBuffer) {
+        CFRelease(_latestPixelBuffer);
+    }
+    
     _captureDeviceInput = nil;
+    _captureMetadataOutput = nil;
+    
+    [_captureVideoPreviewLayer removeFromSuperlayer];
+    _captureVideoPreviewLayer = nil;
+    
+    [_cameraViewController removeFromParentViewController];
+    _cameraViewController = nil;
+    
+    [_cameraView removeFromSuperview];
+    _cameraView = nil;
+    
+    _captureSession = nil;
+    
+    _serialQueue = nil;
 }
 
 @end
@@ -244,7 +262,6 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
 }
 
 - (void)handleMethodCall:(FlutterMethodCall *)call result:(FlutterResult)result {
-    NSLog(@"Method call: %@", call.method);
     if([@"initialize" isEqualToString:call.method]){
         if(![[call.arguments class] isSubclassOfClass:[NSMutableDictionary class]]){
             NSLog(@"Call's arguments is not instance of a Map.");
@@ -261,6 +278,11 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
                            resolutionPreset: quality
                                       error: &error];
         
+        if(error){
+            result([error flutterError]);
+            return;
+        }
+        
         int64_t textureId = [_registry registerTexture:_camera];
         
         FlutterEventChannel *eventChannel = [FlutterEventChannel
@@ -276,6 +298,7 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
                  @"previewWidth" : @(_camera.previewSize.width),
                  @"previewHeight" : @(_camera.previewSize.height),
                  });
+        
         
     }else if([@"startPreview" isEqualToString:call.method]){
         
