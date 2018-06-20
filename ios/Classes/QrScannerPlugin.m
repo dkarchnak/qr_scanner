@@ -213,14 +213,12 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     {
         CFRelease(_latestPixelBuffer);
     }
+    
     _captureDeviceInput = nil;
     _captureMetadataOutput = nil;
     _captureVideoOutput = nil;
 
     _captureSession = nil;
-
-    //TODO main
-    //_serialQueue = nil;
 }
 
 @end
