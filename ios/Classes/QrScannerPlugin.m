@@ -22,6 +22,7 @@
 @property(readonly, nonatomic) AVCaptureMetadataOutput *captureMetadataOutput;
 @property(readonly, nonatomic) AVCaptureVideoPreviewLayer *captureVideoPreviewLayer;
 @property(readonly, nonatomic) AVCaptureVideoDataOutput *captureVideoOutput;
+@property(readonly, nonatomic) AVCaptureConnection *connection;
 @property(readonly, nonatomic) CGSize previewSize;
 @property(readonly) CVPixelBufferRef volatile latestPixelBuffer;
 
@@ -79,16 +80,16 @@
     [_captureVideoOutput setAlwaysDiscardsLateVideoFrames:YES];
     [_captureVideoOutput setSampleBufferDelegate:self queue:dispatch_get_main_queue()];
     
-    AVCaptureConnection *connection =
+    _connection =
     [AVCaptureConnection connectionWithInputPorts:_captureDeviceInput.ports
                                            output:_captureVideoOutput];
     if ([_captureDevice position] == AVCaptureDevicePositionFront) {
-        connection.videoMirrored = YES;
+        _connection.videoMirrored = YES;
     }
-    connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+    [_connection setVideoOrientation:[self interfaceOrientationToVideoOrientation]];
     [_captureSession addInputWithNoConnections:_captureDeviceInput];
     [_captureSession addOutputWithNoConnections:_captureVideoOutput];
-    [_captureSession addConnection:connection];
+    [_captureSession addConnection:_connection];
     
     _captureMetadataOutput = [[AVCaptureMetadataOutput alloc] init];
     [_captureSession addOutput: _captureMetadataOutput];
@@ -96,9 +97,32 @@
     
     [_captureMetadataOutput setMetadataObjectTypes:[self barcodeTypes]];
     
+    [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+    [[NSNotificationCenter defaultCenter]
+     addObserver:self selector:@selector(orientationChanged)
+     name:UIDeviceOrientationDidChangeNotification
+     object:[UIDevice currentDevice]];
+    
     return self;
 }
 
+-(AVCaptureVideoOrientation)interfaceOrientationToVideoOrientation {
+    switch ([[UIApplication sharedApplication] statusBarOrientation]) {
+        case UIInterfaceOrientationPortraitUpsideDown:
+            return AVCaptureVideoOrientationPortraitUpsideDown;
+        case UIInterfaceOrientationPortrait:
+            return AVCaptureVideoOrientationPortrait;
+        case UIInterfaceOrientationLandscapeLeft:
+            return AVCaptureVideoOrientationLandscapeLeft;
+        case UIInterfaceOrientationLandscapeRight:
+            return AVCaptureVideoOrientationLandscapeRight;
+        default:
+           return AVCaptureVideoOrientationPortrait;
+    }
+
+}
+
+                          
 - (NSArray*)barcodeTypes {
     NSMutableArray *metadataObjectTypes = [NSMutableArray array];
     [metadataObjectTypes addObject:AVMetadataObjectTypeQRCode];
@@ -115,6 +139,8 @@
     while (!OSAtomicCompareAndSwapPtrBarrier(pixelBuffer, nil, (void **)&_latestPixelBuffer)) {
         pixelBuffer = _latestPixelBuffer;
     }
+    
+
     return pixelBuffer;
 }
 
@@ -142,7 +168,6 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
         {
             _onFrameAvailable();
         }
-      
     }
 
     if (!CMSampleBufferDataIsReady(sampleBuffer)) {
@@ -185,6 +210,11 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     return nil;
 }
 
+- (void) orientationChanged{
+    NSLog(@"Orientation changed");
+    [_connection setVideoOrientation:[self interfaceOrientationToVideoOrientation]];
+}
+
 - (void)start {
     [_captureSession startRunning];
 }
@@ -217,7 +247,7 @@ didOutputMetadataObjects:(NSArray *)metadataObjects
     _captureDeviceInput = nil;
     _captureMetadataOutput = nil;
     _captureVideoOutput = nil;
-
+    _connection = nil;
     _captureSession = nil;
 }
 
